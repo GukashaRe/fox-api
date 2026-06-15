@@ -9,12 +9,12 @@ use sqlx::{PgPool, Row, query};
 
 #[post("/api/post/test")]
 async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl Responder> {
-    let res = query("SELECT reason,qq FROM group_blacklist")
+    let res = query("SELECT reason,qq FROM group_blacklist WHERE qq = $1")
         .bind(1000)
         .fetch_one(base.as_ref())
         .await
         .map_err(|e| {
-            eprintln!("数据库查询失败 {}", e);
+            println!("{}:{} 数据库查询失败 {}", file!(),column!(),e);
             ErrorInternalServerError("database err")
         })?;
     let s: String = res.get("reason");
