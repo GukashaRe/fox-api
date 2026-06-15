@@ -7,9 +7,9 @@ use anyhow::Result;
 use serde_json::Value;
 use sqlx::{PgPool, Row, query};
 
-#[post("/post_json")]
+#[post("/api/post/test")]
 async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl Responder> {
-    let res = query("SELECT reason FROM group_blacklist gb WHERE qq = $1")
+    let res = query("SELECT reason,qq FROM group_blacklist")
         .bind(1000)
         .fetch_one(base.as_ref())
         .await
