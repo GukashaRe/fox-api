@@ -2,13 +2,13 @@ pub mod server_config;
 
 use actix_web::error::ErrorInternalServerError;
 use actix_web::web::{Data, Json};
-use actix_web::{App, HttpServer, Result as ActixResult, post};
+use actix_web::{App, HttpResponse, HttpServer, Responder, Result as ActixResult, post};
 use anyhow::Result;
 use serde_json::Value;
 use sqlx::{PgPool, Row, query};
 
 #[post("/post_json")]
-async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<String> {
+async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl Responder> {
     let res = query("SELECT reason FROM group_blacklist gb WHERE qq = $1")
         .bind(1000)
         .fetch_one(base.as_ref())
@@ -17,7 +17,8 @@ async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<String
             eprintln!("数据库查询失败 {}", e);
             ErrorInternalServerError("database err")
         })?;
-    Ok(res.get("reason"))
+    let s: String = res.get("reason");
+    Ok(HttpResponse::Ok().body(s))
 }
 
 #[tokio::main]
