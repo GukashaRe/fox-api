@@ -4,6 +4,7 @@ use actix_web::error::ErrorInternalServerError;
 use actix_web::web::{Data, Json};
 use actix_web::{App, HttpResponse, HttpServer, Responder, Result as ActixResult, post};
 use anyhow::Result;
+use env_logger::Env;
 use serde_json::Value;
 use sqlx::{PgPool, Row, query};
 
@@ -14,7 +15,7 @@ async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl R
         .fetch_one(base.as_ref())
         .await
         .map_err(|e| {
-            println!("{}:{} 数据库查询失败 {}", file!(),column!(),e);
+            println!("{}:{} 数据库查询失败 {}", file!(), column!(), e);
             ErrorInternalServerError("database err")
         })?;
     let s: String = res.get("reason");
@@ -23,6 +24,7 @@ async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl R
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init_from_env(Env::default().default_filter_or("debug"));
     let config = server_config::check_or_crate_config().await?;
     let database = PgPool::connect(&config.pgsql_url).await?;
     Ok(
