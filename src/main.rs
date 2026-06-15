@@ -1,3 +1,5 @@
+pub mod server_config;
+
 use actix_web::web::Json;
 use actix_web::{App, HttpServer, Result as ActixResult, post};
 use anyhow::Result;
@@ -10,6 +12,7 @@ async fn post_json(data: Json<Value>) -> ActixResult<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let config = server_config::check_or_crate_config().await?;
     Ok(HttpServer::new(|| App::new().service(post_json))
         .bind(("127.0.0.1", 10013))?
         .run()
