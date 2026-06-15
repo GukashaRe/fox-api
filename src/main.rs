@@ -27,10 +27,12 @@ async fn main() -> Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("debug"));
     let config = server_config::check_or_crate_config().await?;
     let database = PgPool::connect(&config.pgsql_url).await?;
-    Ok(
-        HttpServer::new(move || App::new().service(post_json).app_data(database.clone()))
-            .bind(("127.0.0.1", 10013))?
-            .run()
-            .await?,
-    )
+    Ok(HttpServer::new(move || {
+        App::new()
+            .service(post_json)
+            .app_data(Data::new(database.clone()))
+    })
+    .bind(("127.0.0.1", 10013))?
+    .run()
+    .await?)
 }
