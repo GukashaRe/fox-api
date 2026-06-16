@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
         App::new()
             .service(post_json)
             .service(gget)
+            .service(root_handle)
             .app_data(Data::new(database.clone()))
     })
     .bind(("127.0.0.1", 10013))?
