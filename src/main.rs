@@ -1,8 +1,12 @@
+mod database;
 pub mod fox_logger;
+mod permissions;
 pub mod server_config;
+mod utils;
 
 // 重导出关键的函数，这样 $crate::get_logger() 就能找到了
 use crate::fox_logger::{LogLevel, Logger, init_logger};
+use crate::utils::get_ip;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::web::{Data, Json};
 use actix_web::{
@@ -37,17 +41,7 @@ async fn gget() -> ActixResult<impl Responder> {
 
 #[get("/")]
 async fn root_handle(req: HttpRequest) -> ActixResult<impl Responder> {
-    let ip = req
-        .headers()
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            req.connection_info()
-                .realip_remote_addr()
-                .unwrap_or("unknown")
-                .to_string()
-        });
+    let ip = get_ip(req);
     Ok(HttpResponse::Ok().body(format!("欢迎 {} 使用GukashaService！", ip)))
 }
 
