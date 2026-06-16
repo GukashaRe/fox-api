@@ -1,34 +1,128 @@
-# .github/workflows/build.yml
-name: Build Linux Binary
+# .github/workflows/release.yml
+name: Release
 
 on:
-  workflow_dispatch:        # 只允许手动触发
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build for Linux x86_64
+  check_condition:
+    name: Check Release Condition
     runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
+      - name: Check if tagged commit is on main
+        id: check
         run: |
-          rustup target add x86_64-unknown-linux-musl
-          rustup component add rust-std
+          # 获取当前 tag 对应的 commit
+          TAG_COMMIT=$(git rev-parse HEAD)
+          
+          # 检查这个 commit 是否在 main 分支上
+          if git branch --contains $TAG_COMMIT | grep -q "main"; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Tagged commit is on main branch"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "❌ Tagged commit is NOT on main branch"
+          fi
 
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: check_condition
+    if: |
+      needs.check_condition.outputs.should_release == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: cls
+            asset: cls-linux-x86_64
+            deps: musl-tools
+            flags: "-C target-feature=+crt-static"
 
-      - name: Build release binary
-        run: cargo build --release --target x86_64-unknown-linux-musl
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: cls.exe
+            asset: cls-windows-x86_64.exe
+            deps: ""
+            flags: ""
 
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: cls
+            asset: cls-macos-x86_64
+            deps: ""
+            flags: ""
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: cls
+            asset: cls-macos-aarch64
+            deps: ""
+            flags: ""
+
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: cls-ubuntu-server
-          path: target/x86_64-unknown-linux-musl/release/cls
+          fetch-depth: 0  # 需要获取完整历史来检查分支
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1"
+          key: "${{ matrix.target }}"
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install deps
+        if: matrix.deps != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.deps }}
+
+      - run: cargo build --release --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: ${{ matrix.flags }}
+
+      - name: Strip (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact }} || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
           if-no-files-found: error
+
+  release:
+    needs: [check_condition, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      (needs.check_condition.outputs.should_release == 'true' && github.event_name == 'push') ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
