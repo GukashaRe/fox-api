@@ -1,34 +1,155 @@
-# .github/workflows/build.yml
-name: Build Linux Binary
+# .github/workflows/release.yml
+name: Release
 
 on:
-  workflow_dispatch:        # 只允许手动触发
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build for Linux x86_64
+  check_condition:
+    name: Check Release Condition
     runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          rustup component add rust-std
-
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-
-      - name: Build release binary
-        run: cargo build --release --target x86_64-unknown-linux-musl
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
         with:
-          name: cls-ubuntu-server
-          path: target/x86_64-unknown-linux-musl/release/cls
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "📌 Tag: $TAG"
+
+      - name: Check if tagged commit is on main
+        id: check
+        run: |
+          TAG="${{ steps.tag.outputs.tag_name }}"
+          
+          # 获取 tag 对应的 commit
+          TAG_COMMIT=$(git rev-parse refs/tags/$TAG)
+          
+          if git branch -r --contains $TAG_COMMIT | grep -q "origin/main"; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Tag $TAG is on main branch"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "❌ Tag $TAG is NOT on main branch"
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: check_condition
+    if: needs.check_condition.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: cls
+            asset: cls-linux-x86_64
+            deps: musl-tools
+            flags: "-C target-feature=+crt-static"
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: cls.exe
+            asset: cls-windows-x86_64.exe
+            deps: ""
+            flags: ""
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: cls
+            asset: cls-macos-x86_64
+            deps: ""
+            flags: ""
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: cls
+            asset: cls-macos-aarch64
+            deps: ""
+            flags: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1"
+          key: "${{ matrix.target }}"
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install deps
+        if: matrix.deps != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.deps }}
+
+      - run: cargo build --release --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: ${{ matrix.flags }}
+
+      - name: Strip (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact }} || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
           if-no-files-found: error
+
+  release:
+    needs: [check_condition, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: needs.check_condition.outputs.should_release == 'true'
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Set tag name
+        id: tag
+        run: |
+          echo "TAG=${{ needs.check_condition.outputs.tag_name }}" >> $GITHUB_OUTPUT
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: ${{ steps.tag.outputs.TAG }}
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.TAG, 'beta') || contains(steps.tag.outputs.TAG, 'alpha') || contains(steps.tag.outputs.TAG, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
