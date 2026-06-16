@@ -28,9 +28,12 @@ jobs:
         with:
           fetch-depth: 0
 
+<<<<<<< HEAD
       - name: Fetch all tags
         run: git fetch --tags
 
+=======
+>>>>>>> 4ca7ce276c293a0a90d1f0d55809f12a6aa61458
       - name: Determine tag name
         id: tag
         run: |
@@ -48,7 +51,11 @@ jobs:
           TAG="${{ steps.tag.outputs.tag_name }}"
           
           # 获取 tag 对应的 commit
+<<<<<<< HEAD
           TAG_COMMIT=$(git rev-parse refs/tags/$TAG)
+=======
+          TAG_COMMIT=$(git rev-parse $TAG)
+>>>>>>> 4ca7ce276c293a0a90d1f0d55809f12a6aa61458
           
           if git branch -r --contains $TAG_COMMIT | grep -q "origin/main"; then
             echo "should_release=true" >> $GITHUB_OUTPUT
@@ -62,7 +69,12 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     needs: check_condition
+<<<<<<< HEAD
     if: needs.check_condition.outputs.should_release == 'true'
+=======
+    if: |
+      needs.check_condition.outputs.should_release == 'true'
+>>>>>>> 4ca7ce276c293a0a90d1f0d55809f12a6aa61458
     strategy:
       matrix:
         include:
