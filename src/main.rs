@@ -5,7 +5,7 @@ pub mod server_config;
 use crate::fox_logger::{LogLevel, Logger, init_logger};
 use actix_web::error::ErrorInternalServerError;
 use actix_web::web::{Data, Json};
-use actix_web::{App, HttpResponse, HttpServer, Responder, Result as ActixResult, post};
+use actix_web::{App, HttpResponse, HttpServer, Responder, Result as ActixResult, get, post};
 use anyhow::Result;
 use env_logger::Env;
 pub use fox_logger::get_logger;
@@ -28,6 +28,11 @@ async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl R
     Ok(HttpResponse::Ok().body(s))
 }
 
+#[get("/get")]
+async fn gget() -> ActixResult<impl Responder> {
+    Ok(HttpResponse::Ok())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut logger = Logger::new();
@@ -39,6 +44,7 @@ async fn main() -> Result<()> {
     Ok(HttpServer::new(move || {
         App::new()
             .service(post_json)
+            .service(gget)
             .app_data(Data::new(database.clone()))
     })
     .bind(("127.0.0.1", 10013))?
