@@ -6,6 +6,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,23 +21,38 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "📌 Tag: $TAG"
+
       - name: Check if tagged commit is on main
         id: check
         run: |
-          TAG_COMMIT=$(git rev-parse HEAD)
+          TAG="${{ steps.tag.outputs.tag_name }}"
+          
+          # 获取 tag 对应的 commit
+          TAG_COMMIT=$(git rev-parse $TAG)
           
           if git branch -r --contains $TAG_COMMIT | grep -q "origin/main"; then
             echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "✅ Tagged commit is on main branch"
+            echo "✅ Tag $TAG is on main branch"
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "❌ Tagged commit is NOT on main branch"
+            echo "❌ Tag $TAG is NOT on main branch"
           fi
 
   build:
@@ -40,8 +60,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: check_condition
     if: |
-      needs.check_condition.outputs.should_release == 'true' ||
-      github.event_name == 'workflow_dispatch'
+      needs.check_condition.outputs.should_release == 'true'
     strategy:
       matrix:
         include:
@@ -110,18 +129,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: |
-      (needs.check_condition.outputs.should_release == 'true' && github.event_name == 'push') ||
-      github.event_name == 'workflow_dispatch'
+    if: needs.check_condition.outputs.should_release == 'true'
 
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Get tag name
+      - name: Set tag name
         id: tag
-        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          echo "TAG=${{ needs.check_condition.outputs.tag_name }}" >> $GITHUB_OUTPUT
 
       - uses: softprops/action-gh-release@v1
         with:
