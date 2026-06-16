@@ -5,7 +5,9 @@ pub mod server_config;
 use crate::fox_logger::{LogLevel, Logger, init_logger};
 use actix_web::error::ErrorInternalServerError;
 use actix_web::web::{Data, Json};
-use actix_web::{App, HttpResponse, HttpServer, Responder, Result as ActixResult, get, post};
+use actix_web::{
+    App, HttpRequest, HttpResponse, HttpServer, Responder, Result as ActixResult, get, post,
+};
 use anyhow::Result;
 use env_logger::Env;
 pub use fox_logger::get_logger;
@@ -31,6 +33,22 @@ async fn post_json(_data: Json<Value>, base: Data<PgPool>) -> ActixResult<impl R
 #[get("/get")]
 async fn gget() -> ActixResult<impl Responder> {
     Ok(HttpResponse::Ok())
+}
+
+#[get("/")]
+async fn root_handle(req: HttpRequest) -> ActixResult<impl Responder> {
+    let ip = req
+        .headers()
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            req.connection_info()
+                .realip_remote_addr()
+                .unwrap_or("unknown")
+                .to_string()
+        });
+    Ok(HttpResponse::Ok().body(format!("欢迎 {} 使用GukashaService！", ip)))
 }
 
 #[tokio::main]
