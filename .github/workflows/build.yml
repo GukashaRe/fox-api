@@ -47,7 +47,6 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag_name }}"
           
-          # 获取 tag 对应的 commit
           TAG_COMMIT=$(git rev-parse refs/tags/$TAG)
           
           if git branch -r --contains $TAG_COMMIT | grep -q "origin/main"; then
@@ -138,18 +137,23 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: |
+          ls -la artifacts/
+          find artifacts/ -type f
+
       - name: Set tag name
         id: tag
         run: |
           echo "TAG=${{ needs.check_condition.outputs.tag_name }}" >> $GITHUB_OUTPUT
 
-      - uses: softprops/action-gh-release@v1
+      - name: Create Release and Upload Assets
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ steps.tag.outputs.TAG }}
+          tag: ${{ steps.tag.outputs.TAG }}
           name: ${{ steps.tag.outputs.TAG }}
-          files: artifacts/**/*
-          generate_release_notes: true
+          artifacts: "artifacts/**/*"
+          generateReleaseNotes: true
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.TAG, 'beta') || contains(steps.tag.outputs.TAG, 'alpha') || contains(steps.tag.outputs.TAG, 'rc') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
