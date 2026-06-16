@@ -5,8 +5,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
   workflow_dispatch:
 
 env:
@@ -19,14 +17,17 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Check if tagged commit is on main
         id: check
         run: |
-          # 获取当前 tag 对应的 commit
           TAG_COMMIT=$(git rev-parse HEAD)
           
-          # 检查这个 commit 是否在 main 分支上
-          if git branch --contains $TAG_COMMIT | grep -q "main"; then
+          if git branch -r --contains $TAG_COMMIT | grep -q "origin/main"; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "✅ Tagged commit is on main branch"
           else
@@ -74,8 +75,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 需要获取完整历史来检查分支
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -120,9 +119,17 @@ jobs:
         with:
           path: artifacts
 
+      - name: Get tag name
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: ${{ steps.tag.outputs.TAG }}
           files: artifacts/**/*
           generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.TAG, 'beta') || contains(steps.tag.outputs.TAG, 'alpha') || contains(steps.tag.outputs.TAG, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
