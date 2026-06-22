@@ -1,8 +1,7 @@
 use actix_web::HttpRequest;
 
 pub fn get_ip(req: HttpRequest) -> String {
-    let ip = req
-        .headers()
+    req.headers()
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -11,6 +10,5 @@ pub fn get_ip(req: HttpRequest) -> String {
                 .realip_remote_addr()
                 .unwrap_or("unknown")
                 .to_string()
-        });
-    ip
+        })
 }

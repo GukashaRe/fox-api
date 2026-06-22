@@ -47,6 +47,7 @@ async fn root_handle(req: HttpRequest) -> ActixResult<impl Responder> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("{}", include_str!("ascii_art.txt"));
     let mut logger = Logger::new();
     logger.set_min_level(LogLevel::Debug);
     init_logger(logger).unwrap();
